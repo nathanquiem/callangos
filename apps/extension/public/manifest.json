@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Callangos",
+  "description": "Discador leve com registro técnico de ligações.",
+  "version": "0.1.0",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["http://localhost:3333/*"],
+  "action": {
+    "default_title": "Abrir Callangos"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  }
+}

@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+**/node_modules
+**/dist
+services/api/.data
+.env
+.env.*
+*.log
+coverage
+recordings
+uploads

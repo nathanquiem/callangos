@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Jersey+10&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'Manrope', Inter, system-ui, sans-serif;
+  color: #232629;
+  background: #e8f3fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --orange: #ff6238;
+  --orange-dark: #8b2f16;
+  --sky: #e8f3fc;
+  --paper: #ffffff;
+  --graphite: #232629;
+  --midnight: #101828;
+  --slate: #5c6066;
+  --ash: #9198a1;
+  --line: #d7e4ef;
+  --green: #168c61;
+  --green-soft: #e0f5ec;
+  --red: #d4473f;
+  --red-soft: #fde9e6;
+  --yellow: #a56b00;
+  --yellow-soft: #fff1c7;
+  --shadow-card:
+    0 2px 4px rgba(15, 34, 52, 0.04),
+    0 8px 18px rgba(15, 34, 52, 0.045),
+    0 24px 42px rgba(15, 34, 52, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--sky);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid rgba(255, 98, 56, 0.28);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: var(--graphite);
+  background: rgba(255, 98, 56, 0.22);
+}

@@ -1,0 +1,15 @@
+{
+  "name": "callangos",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:extension": "pnpm --filter extension dev",
+    "dev:api": "pnpm --filter @callangos/api dev",
+    "db:migrate": "pnpm --filter @callangos/api db:migrate",
+    "db:seed": "pnpm --filter @callangos/api db:seed",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint"
+  }
+}

@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Jersey+10&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'Manrope', Inter, system-ui, sans-serif;
+  color: #232629;
+  background: #e8f3fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --orange: #ff6238;
+  --sky: #e8f3fc;
+  --paper: #ffffff;
+  --graphite: #232629;
+  --slate: #5c6066;
+  --ash: #929aa1;
+  --line: #d5e3ed;
+  --green: #168c61;
+  --green-soft: #e1f5ec;
+  --red: #dc4d43;
+  --red-soft: #fde9e6;
+  --yellow: #a56b00;
+  --yellow-soft: #fff1c7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 340px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--sky);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(255, 98, 56, 0.27);
+  outline-offset: 2px;
+}
