@@ -49,7 +49,12 @@ function createPostgresClient(databaseUrl: string): DatabaseClient {
       return { rows: [...rows] }
     },
     async exec(text: string) {
-      await client.unsafe(text)
+      const reserved = await client.reserve()
+      try {
+        await reserved.unsafe(text)
+      } finally {
+        reserved.release()
+      }
     },
     async close() {
       await client.end()
