@@ -149,23 +149,59 @@ CREATE INDEX IF NOT EXISTS auth_sessions_active_idx
   ON auth_sessions (user_id, expires_at DESC);
 
 -- Regras que impedem CDRs incoerentes de contaminarem Histórico e Painel.
-ALTER TABLE calls
-  ADD CONSTRAINT calls_answered_after_start_check
-    CHECK (answered_at IS NULL OR answered_at >= started_at),
-  ADD CONSTRAINT calls_ended_after_start_check
-    CHECK (ended_at IS NULL OR ended_at >= started_at),
-  ADD CONSTRAINT calls_talk_within_session_check
-    CHECK (
-      talk_duration_seconds IS NULL OR
-      session_duration_seconds IS NULL OR
-      talk_duration_seconds <= session_duration_seconds
-    ),
-  ADD CONSTRAINT calls_remote_e164_check
-    CHECK (remote_number_e164 ~ '^\+[1-9][0-9]{7,14}$');
+-- A verificação no catálogo também permite retomar uma migração interrompida.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'calls_answered_after_start_check'
+      AND conrelid = 'calls'::regclass
+  ) THEN
+    ALTER TABLE calls ADD CONSTRAINT calls_answered_after_start_check
+      CHECK (answered_at IS NULL OR answered_at >= started_at);
+  END IF;
 
-ALTER TABLE phone_numbers
-  ADD CONSTRAINT phone_numbers_e164_check
-    CHECK (e164 ~ '^\+[1-9][0-9]{7,14}$');
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'calls_ended_after_start_check'
+      AND conrelid = 'calls'::regclass
+  ) THEN
+    ALTER TABLE calls ADD CONSTRAINT calls_ended_after_start_check
+      CHECK (ended_at IS NULL OR ended_at >= started_at);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'calls_talk_within_session_check'
+      AND conrelid = 'calls'::regclass
+  ) THEN
+    ALTER TABLE calls ADD CONSTRAINT calls_talk_within_session_check
+      CHECK (
+        talk_duration_seconds IS NULL OR
+        session_duration_seconds IS NULL OR
+        talk_duration_seconds <= session_duration_seconds
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'calls_remote_e164_check'
+      AND conrelid = 'calls'::regclass
+  ) THEN
+    ALTER TABLE calls ADD CONSTRAINT calls_remote_e164_check
+      CHECK (remote_number_e164 ~ '^\+[1-9][0-9]{7,14}$');
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'phone_numbers_e164_check'
+      AND conrelid = 'phone_numbers'::regclass
+  ) THEN
+    ALTER TABLE phone_numbers ADD CONSTRAINT phone_numbers_e164_check
+      CHECK (e164 ~ '^\+[1-9][0-9]{7,14}$');
+  END IF;
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION callangos_set_updated_at()
 RETURNS trigger AS $$
@@ -175,33 +211,43 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS organizations_set_updated_at ON organizations;
 CREATE TRIGGER organizations_set_updated_at
   BEFORE UPDATE ON organizations
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS users_set_updated_at ON users;
 CREATE TRIGGER users_set_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS telephony_providers_set_updated_at ON telephony_providers;
 CREATE TRIGGER telephony_providers_set_updated_at
   BEFORE UPDATE ON telephony_providers
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS phone_numbers_set_updated_at ON phone_numbers;
 CREATE TRIGGER phone_numbers_set_updated_at
   BEFORE UPDATE ON phone_numbers
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS extensions_set_updated_at ON extensions;
 CREATE TRIGGER extensions_set_updated_at
   BEFORE UPDATE ON extensions
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS calls_set_updated_at ON calls;
 CREATE TRIGGER calls_set_updated_at
   BEFORE UPDATE ON calls
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS recordings_set_updated_at ON recordings;
 CREATE TRIGGER recordings_set_updated_at
   BEFORE UPDATE ON recordings
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS user_settings_set_updated_at ON user_settings;
 CREATE TRIGGER user_settings_set_updated_at
   BEFORE UPDATE ON user_settings
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS webhooks_set_updated_at ON webhooks;
 CREATE TRIGGER webhooks_set_updated_at
   BEFORE UPDATE ON webhooks
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
+DROP TRIGGER IF EXISTS provider_secret_references_set_updated_at ON provider_secret_references;
 CREATE TRIGGER provider_secret_references_set_updated_at
   BEFORE UPDATE ON provider_secret_references
   FOR EACH ROW EXECUTE FUNCTION callangos_set_updated_at();
