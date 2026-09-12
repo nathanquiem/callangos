@@ -1508,22 +1508,22 @@ button:disabled {
 .collapse-button {
   position: absolute;
   z-index: 2;
-  top: 27px;
-  right: -18px;
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--sky);
-  border-radius: 11px;
-  background: linear-gradient(145deg, #ff7854, var(--orange));
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(255, 98, 56, .28), inset 0 1px rgba(255,255,255,.28);
+  top: 14px;
+  right: -15px;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--sky);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--orange);
+  box-shadow: 0 5px 14px rgba(32, 47, 56, .12);
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
 .collapse-button:hover {
   transform: translateY(-1px) scale(1.04);
-  background: linear-gradient(145deg, #ff8665, #ff5529);
-  box-shadow: 0 11px 24px rgba(255, 98, 56, .34), inset 0 1px rgba(255,255,255,.32);
+  background: #fff2ed;
+  box-shadow: 0 7px 18px rgba(255, 98, 56, .2);
 }
 
 .collapse-button:active {

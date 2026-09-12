@@ -18,7 +18,7 @@ export async function seed() {
      VALUES ($1, $2, $3, 'admin')
      ON CONFLICT (id) DO UPDATE
      SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = now()`,
-    [demoIds.user, 'Nael Queiroz', config.ADMIN_EMAIL],
+    [demoIds.user, 'Nathan Quiem', config.ADMIN_EMAIL],
   )
 
   const admin = await db.query<{ password_hash: string | null }>(
