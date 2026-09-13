@@ -6,7 +6,6 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { config } from '../config.js'
 import { db } from '../db/client.js'
-import { normalizeBrazilianPhone } from '../domain/phone.js'
 import { dispatchWebhooks } from '../services/webhooks.js'
 import { requireAuth } from './auth.js'
 import { authenticateApiToken } from './integrations.js'
@@ -16,9 +15,34 @@ const eventSchema = z.object({
   phone: z.string().min(3).max(240),
 })
 
-function connectorPhone(value: string) {
-  const candidates = value.match(/\+?\d{10,13}/g)
-  return normalizeBrazilianPhone(candidates?.at(-1) ?? value)
+type ConnectorCall = {
+  id: string
+  status: string
+  remote_number_e164: string
+}
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function matchesConnectorPhone(rawPhone: string, e164: string) {
+  const received = digitsOnly(rawPhone)
+  const remote = digitsOnly(e164)
+  if (received.length < 10 || remote.length < 10) return false
+
+  // A BR DID pode acrescentar o tech prefix antes do destino. O MicroSIP
+  // repassa esse valor completo (ex.: 423614 + 55119...), então a parte
+  // confiável para associar a ligação é o sufixo com o número discado.
+  return received.endsWith(remote) || remote.endsWith(received)
+}
+
+function statusAfterConnectorEvent(currentStatus: string, event: z.infer<typeof eventSchema>['event']) {
+  const terminalStatuses = ['completed', 'missed', 'busy', 'failed', 'canceled']
+  if (terminalStatuses.includes(currentStatus)) return currentStatus
+  if (event === 'answered') return 'answered'
+  if (event === 'busy') return 'busy'
+  if (event === 'failed') return 'failed'
+  return currentStatus === 'answered' ? 'completed' : 'missed'
 }
 
 export async function connectorRoutes(app: FastifyInstance) {
@@ -32,45 +56,38 @@ export async function connectorRoutes(app: FastifyInstance) {
     const token = await authenticateApiToken(request)
     if (!token?.created_by) return reply.code(401).send({ error: 'invalid_api_token' })
     const body = eventSchema.parse(request.body)
-    const remoteNumber = connectorPhone(body.phone)
-    const current = await db.query<{ id: string; status: string }>(
-      `SELECT id, status
+    const candidates = await db.query<ConnectorCall>(
+      `SELECT id, status, remote_number_e164
        FROM calls
        WHERE user_id = $1
-         AND remote_number_e164 = $2
-         AND status IN ('created', 'handed_off', 'ringing', 'answered')
+         AND status IN ('created', 'handed_off', 'ringing', 'answered', 'completed', 'missed', 'busy', 'failed')
          AND started_at > now() - interval '4 hours'
        ORDER BY started_at DESC
-       LIMIT 1`,
-      [token.created_by, remoteNumber],
+       LIMIT 25`,
+      [token.created_by],
     )
-    if (!current.rows[0]) return reply.code(404).send({ error: 'active_call_not_found' })
+    const current = candidates.rows.find((call) => matchesConnectorPhone(body.phone, call.remote_number_e164))
+    if (!current) return reply.code(404).send({ error: 'active_call_not_found' })
 
-    const nextStatus = body.event === 'answered'
-      ? 'answered'
-      : body.event === 'busy'
-        ? 'busy'
-        : body.event === 'failed'
-          ? 'failed'
-          : current.rows[0].status === 'answered' ? 'completed' : 'missed'
+    const nextStatus = statusAfterConnectorEvent(current.status, body.event)
     const ended = ['completed', 'missed', 'busy', 'failed'].includes(nextStatus)
     const result = await db.query(
       `UPDATE calls
        SET status = $2,
            answered_at = CASE WHEN $2 = 'answered' THEN COALESCE(answered_at, now()) ELSE answered_at END,
-           ended_at = CASE WHEN $3 THEN now() ELSE ended_at END,
-           session_duration_seconds = CASE WHEN $3 THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - started_at))::integer) ELSE session_duration_seconds END,
-           talk_duration_seconds = CASE WHEN $3 AND answered_at IS NOT NULL THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - answered_at))::integer) WHEN $3 THEN 0 ELSE talk_duration_seconds END,
+           ended_at = CASE WHEN $3 THEN COALESCE(ended_at, now()) ELSE ended_at END,
+           session_duration_seconds = CASE WHEN $3 AND ended_at IS NULL THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - started_at))::integer) ELSE session_duration_seconds END,
+           talk_duration_seconds = CASE WHEN $3 AND ended_at IS NULL AND answered_at IS NOT NULL THEN GREATEST(0, EXTRACT(EPOCH FROM (now() - answered_at))::integer) WHEN $3 AND ended_at IS NULL THEN 0 ELSE talk_duration_seconds END,
            data_source = 'mixed',
            updated_at = now()
        WHERE id = $1
        RETURNING *`,
-      [current.rows[0].id, nextStatus, ended],
+      [current.id, nextStatus, ended],
     )
     await db.query(
       `INSERT INTO call_events (id, call_id, event_type, source, payload)
        VALUES ($1, $2, $3, 'provider', $4::jsonb)`,
-      [randomUUID(), current.rows[0].id, nextStatus, JSON.stringify({ connector: 'microsip', phone: body.phone })],
+      [randomUUID(), current.id, nextStatus, JSON.stringify({ connector: 'microsip', phone: body.phone })],
     )
     if (nextStatus === 'completed') {
       await db.query(
@@ -78,7 +95,7 @@ export async function connectorRoutes(app: FastifyInstance) {
          SELECT $1, id, provider_id, 'pending', 'callangos', ended_at
          FROM calls WHERE id = $2
            AND NOT EXISTS (SELECT 1 FROM recordings WHERE call_id = $2)`,
-        [randomUUID(), current.rows[0].id],
+        [randomUUID(), current.id],
       )
     }
     await dispatchWebhooks('call.updated', result.rows[0])

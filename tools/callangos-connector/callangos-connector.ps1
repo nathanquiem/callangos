@@ -23,6 +23,7 @@ try {
   $phone = ($PhoneParts -join ' ').Trim()
   $headers = @{ Authorization = "Bearer $token" }
   $payload = @{ event = $Event; phone = $phone } | ConvertTo-Json -Compress
+  Write-ConnectorLog "Evento recebido: $Event para $phone."
   $response = Invoke-RestMethod -Uri "$($config.ApiUrl.TrimEnd('/'))/api/v1/connector/events" -Method Post -Headers $headers -ContentType 'application/json' -Body $payload -TimeoutSec 20
   Write-ConnectorLog "Evento $Event enviado para $phone."
 
@@ -30,10 +31,16 @@ try {
     $recording = $null
     for ($attempt = 0; $attempt -lt 8 -and -not $recording; $attempt++) {
       Start-Sleep -Seconds 2
-      $recording = Get-ChildItem -LiteralPath $config.RecordingPath -File -ErrorAction SilentlyContinue |
+      $recentRecordings = @(Get-ChildItem -LiteralPath $config.RecordingPath -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Extension -in '.mp3', '.wav' -and $_.LastWriteTime -gt (Get-Date).AddMinutes(-10) } |
-        Sort-Object LastWriteTime -Descending |
+        Sort-Object LastWriteTime -Descending)
+      $phoneDigits = $phone -replace '\D', ''
+      $recording = $recentRecordings |
+        Where-Object { $phoneDigits.Length -ge 10 -and (($_.BaseName -replace '\D', '').Contains($phoneDigits)) } |
         Select-Object -First 1
+      if (-not $recording) {
+        $recording = $recentRecordings | Select-Object -First 1
+      }
     }
     if ($recording) {
       $uploadHeaders = @{

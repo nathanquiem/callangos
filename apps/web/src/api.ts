@@ -180,10 +180,11 @@ export const initialFilters: FilterState = {
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const session = localStorage.getItem('callangos_session')
+  const hasBody = init?.body !== undefined && init.body !== null
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       ...(session ? { Authorization: `Bearer ${session}` } : {}),
       ...init?.headers,
     },
