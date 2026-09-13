@@ -14,7 +14,15 @@ if (Get-Process -Name MicroSIP -ErrorAction SilentlyContinue) {
   throw 'Feche completamente o MicroSIP pelo ícone ao lado do relógio e execute novamente.'
 }
 
-$protectedToken = Read-Host 'Cole o NOVO token do Callangos' -AsSecureString | ConvertFrom-SecureString
+$secureToken = Read-Host 'Cole o NOVO token do Callangos' -AsSecureString
+$protectedToken = $secureToken | ConvertFrom-SecureString
+$credential = New-Object System.Management.Automation.PSCredential('callangos', $secureToken)
+$plainToken = $credential.GetNetworkCredential().Password
+try {
+  Invoke-RestMethod -Uri "$($ApiUrl.TrimEnd('/'))/api/v1/external/calls?limit=1" -Headers @{ Authorization = "Bearer $plainToken" } -TimeoutSec 15 | Out-Null
+} catch {
+  throw 'A API não aceitou o token. Confirme o deploy, revogue este token e gere outro no Callangos publicado.'
+}
 New-Item -ItemType Directory -Path $connectorDirectory -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'callangos-connector.ps1') -Destination $connectorScript -Force
 
