@@ -2499,6 +2499,19 @@ button:disabled {
   color: var(--red);
 }
 
+.button-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: button-spin .7s linear infinite;
+}
+
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
+
 .endpoint-box {
   display: flex;
   flex-direction: column;

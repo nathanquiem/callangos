@@ -12,6 +12,7 @@ coverage/
 *.key
 recordings/
 uploads/
+CallangosConnector.zip
 .idea/
 .vscode/
 *-arquivado-*.md
