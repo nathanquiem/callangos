@@ -7,6 +7,7 @@ const configSchema = z.object({
   APP_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174'),
   DATABASE_URL: z.string().optional(),
   PGLITE_DATA_DIR: z.string().default('.data/callangos'),
+  RECORDINGS_DIR: z.string().default('.data/recordings'),
   WEBHOOK_SIGNING_KEY: z.string().min(16).default('callangos-local-signing-key'),
   ADMIN_EMAIL: z.string().email().default('nael@callangos.local'),
   ADMIN_PASSWORD: z.string().min(8).default('callangos-local'),

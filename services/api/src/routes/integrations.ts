@@ -27,12 +27,12 @@ function tokenHash(token: string) {
   return createHash('sha256').update(token).digest('hex')
 }
 
-async function authenticateToken(request: FastifyRequest) {
+export async function authenticateApiToken(request: FastifyRequest) {
   const authorization = request.headers.authorization
   if (!authorization?.startsWith('Bearer ')) return null
   const token = authorization.slice(7)
-  const result = await db.query<{ id: string; name: string }>(
-    `SELECT id, name FROM api_tokens
+  const result = await db.query<{ id: string; name: string; created_by: string | null }>(
+    `SELECT id, name, created_by FROM api_tokens
      WHERE token_hash = $1
        AND active = true
        AND (expires_at IS NULL OR expires_at > now())`,
@@ -76,7 +76,7 @@ export async function integrationsRoutes(app: FastifyInstance) {
   })
 
   app.get('/api/v1/external/calls', async (request, reply) => {
-    const token = await authenticateToken(request)
+    const token = await authenticateApiToken(request)
     if (!token) return reply.code(401).send({ error: 'invalid_api_token' })
     const query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(25) }).parse(request.query)
     const calls = await db.query(

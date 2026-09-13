@@ -8,6 +8,7 @@ import { migrate } from './db/migrate.js'
 import { seed } from './db/seed.js'
 import { authRoutes } from './routes/auth.js'
 import { callsRoutes } from './routes/calls.js'
+import { connectorRoutes } from './routes/connector.js'
 import { dashboardRoutes } from './routes/dashboard.js'
 import { integrationsRoutes } from './routes/integrations.js'
 import { recordingsRoutes } from './routes/recordings.js'
@@ -61,6 +62,7 @@ app.get('/health', { config: { rateLimit: false } }, async () => ({
 
 await app.register(authRoutes)
 await app.register(callsRoutes)
+await app.register(connectorRoutes)
 await app.register(dashboardRoutes)
 await app.register(recordingsRoutes)
 await app.register(telephonyRoutes)

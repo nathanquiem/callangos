@@ -8,6 +8,7 @@ Aplicativo de gestão de ligações: discagem, histórico, gravações, painel a
 - `apps/extension`: discador compacto para Chrome/Edge.
 - `services/api`: API Fastify e persistência PostgreSQL.
 - `services/api/migrations`: esquema versionado do banco.
+- `tools/callangos-connector`: conector automático do MicroSIP para eventos e gravações.
 
 ## Desenvolvimento local
 
@@ -102,7 +103,10 @@ ADMIN_PASSWORD=uma-senha-forte-com-12-ou-mais-caracteres
 WEBHOOK_SIGNING_KEY=uma-chave-aleatoria-com-32-ou-mais-caracteres
 ALLOW_DEV_AUTH_BYPASS=false
 SEED_DEMO_DATA=false
+RECORDINGS_DIR=/data/callangos-recordings
 ```
+
+Monte um volume persistente da API em `/data/callangos-recordings`. O conector do MicroSIP envia os áudios para esse diretório; sem volume, um novo deploy removeria os arquivos.
 
 A API recusa iniciar em produção quando uma configuração sensível obrigatória estiver ausente ou insegura.
 

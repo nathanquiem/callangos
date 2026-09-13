@@ -45,6 +45,7 @@ import {
 import { HourlyChart, SignalChart, StatusDonut } from './Charts'
 import {
   apiRequest,
+  apiBase,
   externalDialing,
   filterQuery,
   initialFilters,
@@ -200,6 +201,26 @@ function DialerPage({ calls, telephony, settings, onRefresh, onNavigate, onNotif
     return () => window.clearInterval(interval)
   }, [activeCall])
 
+  useEffect(() => {
+    const callId = activeCall?.id
+    if (!callId) return
+    const sync = async () => {
+      try {
+        const response = await apiRequest<{ data: CallRecord }>(`/api/v1/calls/${callId}`)
+        if (response.data.status === 'answered' && response.data.answered_at) {
+          setActiveCall((current) => current && !current.answeredAt ? { ...current, answeredAt: new Date(response.data.answered_at!).getTime() } : current)
+        }
+        if (['completed', 'missed', 'busy', 'failed', 'canceled'].includes(response.data.status)) {
+          setActiveCall(null)
+          await onRefresh()
+          onNotify('O MicroSIP atualizou a ligação automaticamente.')
+        }
+      } catch { /* O controle manual permanece disponível se o conector estiver offline. */ }
+    }
+    const interval = window.setInterval(() => void sync(), 2500)
+    return () => window.clearInterval(interval)
+  }, [activeCall?.id, onNotify, onRefresh])
+
   const sessionSeconds = activeCall ? Math.max(0, Math.floor((timerNow - activeCall.startedAt) / 1000)) : 0
   const talkSeconds = activeCall?.answeredAt ? Math.max(0, Math.floor((timerNow - activeCall.answeredAt) / 1000)) : 0
 
@@ -257,7 +278,19 @@ function RecordingsPage({ recordings, selectedId, onNotify }: { recordings: Reco
     if (digits) return `${recording.remote_number_e164}${recording.remote_number_display}`.replace(/\D/g, '').includes(digits)
     return recording.remote_number_display.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR'))
   })
-  return <><PageHeader eyebrow="Gravações disponíveis" title="Disse que ligou? Então dá o play." description="Chamadas atendidas com áudio confirmado pela operadora. Pendências continuam visíveis apenas no histórico." /><div className="recordings-toolbar"><label className="recording-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pelo número discado" inputMode="tel" aria-label="Buscar gravação pelo número" />{query && <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca"><X size={15} /></button>}</label><span>{visibleRecordings.length} {visibleRecordings.length === 1 ? 'áudio encontrado' : 'áudios encontrados'}</span></div><section className="recordings-list">{visibleRecordings.map((recording) => <article className={selectedId === recording.id ? 'recording-card selected' : 'recording-card'} key={recording.id}><div className="recording-icon"><Volume2 size={22} /></div><div className="recording-copy"><div><strong>{recording.remote_number_display}</strong><StatusPill status="available" /></div><span>{formatWhen(recording.started_at, true)} · {formatDuration(recording.duration_seconds ?? recording.talk_duration_seconds)}</span><small>{recording.user_name ?? 'Sistema'} · saída por {recording.local_number_display ?? 'número não identificado'}</small></div><div className="waveform" aria-hidden="true">{[7,14,21,11,27,17,9,23,30,13,20,8].map((height, index) => <i style={{ height }} key={`${recording.id}-${index}`} />)}</div><div className="recording-actions"><button className="icon-button" aria-label={`Reproduzir gravação de ${recording.remote_number_display}`} onClick={() => onNotify('O player será conectado à URL real entregue pela BR DID.')}><Play size={17} /></button><button className="icon-button" aria-label={`Baixar gravação de ${recording.remote_number_display}`} onClick={() => onNotify('O download depende da URL autenticada da gravação.')}><Download size={17} /></button></div></article>)}{visibleRecordings.length === 0 && <div className="empty-card">Nenhuma gravação conversa com esse número.</div>}</section><aside className="info-strip"><Cloud size={19} /><span><strong>Sem áudio fantasma:</strong> esta tela recebe apenas registros com estado “disponível”.</span></aside></>
+  async function recordingBlob(id: string) {
+    const session = localStorage.getItem('callangos_session')
+    const response = await fetch(`${apiBase}/api/v1/recordings/${id}/audio`, { headers: session ? { Authorization: `Bearer ${session}` } : {} })
+    if (!response.ok) throw new Error('recording_unavailable')
+    return response.blob()
+  }
+  async function playRecording(recording: RecordingRecord) {
+    try { const url = URL.createObjectURL(await recordingBlob(recording.id)); const audio = new Audio(url); audio.onended = () => URL.revokeObjectURL(url); await audio.play() } catch { onNotify('Não foi possível reproduzir esta gravação.') }
+  }
+  async function downloadRecording(recording: RecordingRecord) {
+    try { const url = URL.createObjectURL(await recordingBlob(recording.id)); const link = document.createElement('a'); link.href = url; link.download = `callangos-${recording.remote_number_e164.replace(/\D/g, '')}.mp3`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) } catch { onNotify('Não foi possível baixar esta gravação.') }
+  }
+  return <><PageHeader eyebrow="Gravações disponíveis" title="Disse que ligou? Então dá o play." description="Chamadas atendidas com áudio enviado pelo conector. Pendências continuam visíveis apenas no histórico." /><div className="recordings-toolbar"><label className="recording-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pelo número discado" inputMode="tel" aria-label="Buscar gravação pelo número" />{query && <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca"><X size={15} /></button>}</label><span>{visibleRecordings.length} {visibleRecordings.length === 1 ? 'áudio encontrado' : 'áudios encontrados'}</span></div><section className="recordings-list">{visibleRecordings.map((recording) => <article className={selectedId === recording.id ? 'recording-card selected' : 'recording-card'} key={recording.id}><div className="recording-icon"><Volume2 size={22} /></div><div className="recording-copy"><div><strong>{recording.remote_number_display}</strong><StatusPill status="available" /></div><span>{formatWhen(recording.started_at, true)} · {formatDuration(recording.duration_seconds ?? recording.talk_duration_seconds)}</span><small>{recording.user_name ?? 'Sistema'} · saída por {recording.local_number_display ?? 'número não identificado'}</small></div><div className="waveform" aria-hidden="true">{[7,14,21,11,27,17,9,23,30,13,20,8].map((height, index) => <i style={{ height }} key={`${recording.id}-${index}`} />)}</div><div className="recording-actions"><button className="icon-button" aria-label={`Reproduzir gravação de ${recording.remote_number_display}`} onClick={() => void playRecording(recording)}><Play size={17} /></button><button className="icon-button" aria-label={`Baixar gravação de ${recording.remote_number_display}`} onClick={() => void downloadRecording(recording)}><Download size={17} /></button></div></article>)}{visibleRecordings.length === 0 && <div className="empty-card">Nenhuma gravação conversa com esse número.</div>}</section><aside className="info-strip"><Cloud size={19} /><span><strong>Sem áudio fantasma:</strong> esta tela recebe apenas registros com estado “disponível”.</span></aside></>
 }
 
 function DashboardPage({ dashboard, filters, users, telephony, onFilters, onApply }: { dashboard: DashboardData; filters: FilterState; users: UserRecord[]; telephony: TelephonyData | null; onFilters: (filters: FilterState) => void; onApply: () => void }) {
@@ -389,6 +422,9 @@ function App() {
   async function loadCalls(filters = historyFilters) { try { const response = await apiRequest<{ data: CallRecord[] }>(`/api/v1/calls?limit=100&${filterQuery(filters)}`); setCalls(response.data); setApiState('online') } catch { setApiState('offline') } }
   async function loadDashboard(filters = dashboardFilters) { try { const response = await apiRequest<{ data: DashboardData }>(`/api/v1/dashboard?${filterQuery(filters)}`); setDashboard(response.data) } catch { setApiState('offline') } }
   async function refreshAll(user = authUser) { await Promise.all([loadCore(user), loadCalls(), loadDashboard()]) }
+  // Atualiza a lista quando a aba de gravações é aberta após um envio do conector.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (authUser && page === 'recordings') void loadCore(authUser) }, [page])
   async function login(email: string, password: string) { const response = await apiRequest<{ data: { token: string; user: AuthUser } }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); localStorage.setItem('callangos_session', response.data.token); setAuthUser(response.data.user); await refreshAll(response.data.user) }
   async function logout() { try { await apiRequest('/api/v1/auth/logout', { method: 'POST' }) } finally { localStorage.removeItem('callangos_session'); setAuthUser(null); setUserDrawer(false); setPage('dialer') } }
 
