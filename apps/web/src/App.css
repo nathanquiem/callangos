@@ -3069,3 +3069,102 @@ img.brand-mark {
 .login-brand .login-logo + span {
   margin-top: 90px;
 }
+
+/* Paginação enxuta, rediscagem e player expandido do MVP. */
+.pagination-footer {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 5px;
+}
+
+.pagination-footer .secondary-button {
+  min-width: 160px;
+  justify-content: center;
+}
+
+.redial-button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 98, 56, .28);
+  border-radius: 7px;
+  background: var(--orange-soft);
+  padding: 0 10px;
+  color: var(--orange);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.recording-card {
+  display: block;
+}
+
+.recording-main {
+  display: grid;
+  grid-template-columns: auto minmax(230px, 1.1fr) minmax(120px, .8fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.recording-player {
+  display: grid;
+  grid-template-columns: minmax(150px, .35fr) minmax(280px, 1fr);
+  align-items: center;
+  gap: 18px;
+  border-top: 1px solid #e2eaf0;
+  margin-top: 16px;
+  padding-top: 15px;
+}
+
+.recording-player > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.recording-player strong {
+  color: var(--graphite);
+  font-size: 11px;
+}
+
+.recording-player span {
+  color: var(--ash);
+  font-size: 10px;
+}
+
+.recording-player audio {
+  width: 100%;
+  height: 38px;
+}
+
+.recording-search .recording-search-submit {
+  width: auto;
+  border-radius: 6px;
+  background: var(--orange-soft);
+  padding: 0 10px;
+  color: var(--orange);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+[data-theme='dark'] .recording-player {
+  border-top-color: #364047;
+}
+
+[data-theme='dark'] .redial-button,
+[data-theme='dark'] .recording-search .recording-search-submit {
+  border-color: rgba(255, 119, 82, .28);
+  background: rgba(255, 98, 56, .12);
+}
+
+@media (max-width: 1040px) {
+  .recording-main { grid-template-columns: auto 1fr auto; }
+}
+
+@media (max-width: 620px) {
+  .recording-main { grid-template-columns: auto 1fr; }
+  .recording-main .recording-actions { grid-column: 2; }
+  .recording-player { grid-template-columns: 1fr; }
+}

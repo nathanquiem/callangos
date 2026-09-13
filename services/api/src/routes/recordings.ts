@@ -17,6 +17,8 @@ export async function recordingsRoutes(app: FastifyInstance) {
   app.get('/api/v1/recordings', { preHandler: requireAuth }, async (request) => {
     const query = z.intersection(callFilterSchema, z.object({
       callId: z.string().uuid().optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().nonnegative().default(0),
     })).parse(request.query)
     const { clause, params } = buildCallWhere(query, 'calls')
     const conditions = [clause.replace(/^WHERE /, ''), "recordings.status = 'available'"]
@@ -26,6 +28,19 @@ export async function recordingsRoutes(app: FastifyInstance) {
       params.push(query.callId)
       conditions.push(`calls.id = $${params.length}`)
     }
+
+    const where = conditions.join(' AND ')
+    const totalResult = await db.query<{ total: number }>(
+      `SELECT COUNT(*)::integer AS total
+       FROM recordings
+       INNER JOIN calls ON calls.id = recordings.call_id
+       WHERE ${where}`,
+      params,
+    )
+    params.push(query.limit)
+    const limitPosition = params.length
+    params.push(query.offset)
+    const offsetPosition = params.length
 
     const result = await db.query(
       `SELECT
@@ -41,12 +56,23 @@ export async function recordingsRoutes(app: FastifyInstance) {
        INNER JOIN calls ON calls.id = recordings.call_id
        LEFT JOIN users ON users.id = calls.user_id
        LEFT JOIN phone_numbers ON phone_numbers.id = calls.phone_number_id
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY recordings.recorded_at DESC NULLS LAST, recordings.created_at DESC`,
+       WHERE ${where}
+       ORDER BY recordings.recorded_at DESC NULLS LAST, recordings.created_at DESC
+       LIMIT $${limitPosition}
+       OFFSET $${offsetPosition}`,
       params,
     )
 
-    return { data: result.rows }
+    const total = totalResult.rows[0]?.total ?? 0
+    return {
+      data: result.rows,
+      meta: {
+        total,
+        limit: query.limit,
+        offset: query.offset,
+        hasMore: query.offset + result.rows.length < total,
+      },
+    }
   })
 
   app.patch('/api/v1/recordings/:id', { preHandler: requireAdmin }, async (request, reply) => {

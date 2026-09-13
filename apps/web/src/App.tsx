@@ -27,11 +27,13 @@ import {
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Pause,
   Phone,
   PhoneCall,
   Play,
   Plus,
   Radio,
+  RotateCcw,
   Search,
   Settings,
   ShieldCheck,
@@ -57,6 +59,7 @@ import type {
   DashboardData,
   FilterState,
   Page,
+  PaginatedResponse,
   RecordingRecord,
   SettingsData,
   TelephonyData,
@@ -171,12 +174,13 @@ function AnalyticsFilters({ filters, users, telephony, onChange, onApply }: { fi
   )
 }
 
-function CallsTable({ rows, onRecording }: { rows: CallRecord[]; onRecording: (recordingId: string) => void }) {
-  return <div className="table-wrap"><table className="calls-table"><thead><tr><th>Destino</th><th>Usuário</th><th>Número usado</th><th>Início</th><th>Tipo</th><th>Status</th><th>Sessão</th><th>Falado</th><th>Gravação</th><th>Fonte</th></tr></thead><tbody>{rows.map((call) => <tr key={call.id}>
+function CallsTable({ rows, onRecording, onRedial }: { rows: CallRecord[]; onRecording: (recordingId: string) => void; onRedial?: (call: CallRecord) => void }) {
+  const retryStatuses = ['missed', 'busy', 'failed', 'canceled']
+  return <div className="table-wrap"><table className="calls-table"><thead><tr><th>Destino</th><th>Usuário</th><th>Número usado</th><th>Início</th><th>Tipo</th><th>Status</th><th>Sessão</th><th>Falado</th><th>Gravação</th><th>Fonte</th>{onRedial && <th>Nova tentativa</th>}</tr></thead><tbody>{rows.map((call) => <tr key={call.id}>
     <td><div className="number-cell"><span className={call.direction === 'outbound' ? 'call-icon outbound' : 'call-icon inbound'}><PhoneCall size={16} /></span><span><strong>{call.remote_number_display}</strong><small>{call.remote_number_e164}</small></span></div></td>
     <td><span className="user-cell">{call.user_name ?? 'Sistema'}<small>{call.external_extension ? `Ramal ${call.external_extension}` : 'Sem ramal'}</small></span></td>
     <td>{call.local_number_display ?? 'Não informado'}</td><td>{formatWhen(call.started_at, true)}</td><td>{call.direction === 'outbound' ? 'Saída' : 'Entrada'}</td><td><StatusPill status={call.status} /></td><td className="mono">{formatDuration(call.session_duration_seconds)}</td><td className="mono">{formatDuration(call.talk_duration_seconds)}</td>
-    <td>{call.recording_id ? <button className="recording-link" onClick={() => onRecording(call.recording_id!)}><Play size={14} /> Ouvir</button> : call.recording_status === 'pending' ? <span className="pending-label"><Clock3 size={13} /> Pendente</span> : '—'}</td><td><span className="source-badge">{call.data_source === 'provider' ? 'Operadora' : call.source === 'extension' ? 'Extensão' : 'App'}</span></td>
+    <td>{call.recording_id ? <button className="recording-link" onClick={() => onRecording(call.recording_id!)}><Play size={14} /> Ouvir</button> : call.recording_status === 'pending' ? <span className="pending-label"><Clock3 size={13} /> Pendente</span> : '—'}</td><td><span className="source-badge">{call.data_source === 'provider' ? 'Operadora' : call.source === 'extension' ? 'Extensão' : 'App'}</span></td>{onRedial && <td>{retryStatuses.includes(call.status) ? <button className="redial-button" onClick={() => onRedial(call)}><RotateCcw size={14} /> Ligar novamente</button> : '—'}</td>}
   </tr>)}</tbody></table>{rows.length === 0 && <div className="empty-state">Nenhuma ligação encontrada com estes filtros.</div>}</div>
 }
 
@@ -259,25 +263,32 @@ function DialerPage({ calls, telephony, settings, onRefresh, onNavigate, onNotif
     } catch { onNotify('A API está indisponível. A ligação não foi registrada.') } finally { setDialing(false) }
   }
 
+  function prepareRedial(call: CallRecord) {
+    setPhone(call.remote_number_e164)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    onNotify(`${call.remote_number_display} pronto para uma nova tentativa.`)
+  }
+
   return <><PageHeader eyebrow="Discador principal" title="Discar era fácil. Agora organizar também é." description="A ligação parte desta tela. A extensão é opcional e só será necessária para discar a partir de outros sistemas." />
     <section className="dialer-layout"><article className="dial-console"><div className="dial-console-copy"><span className="pixel-kicker">CHAMA AÍ</span><h2>Para quem vamos ligar?</h2><p>Digite ou cole um telefone com DDD.</p></div><form className="dial-form" onSubmit={handleDial}><label className="phone-field"><span>+55</span><input value={formatPhone(phone)} onChange={(event) => setPhone(event.target.value)} placeholder="(15) 99999-9999" inputMode="tel" autoFocus /></label>{activeNumbers.length > 0 && <label className="outgoing-number"><small>Registrar na linha</small><select value={selectedPhoneNumberId} onChange={(event) => setPhoneNumberId(event.target.value)}>{activeNumbers.map((number) => <option value={number.id} key={number.id}>{number.label} · {number.display_number}</option>)}</select></label>}<button className="primary-button dial-button" type="submit" disabled={!valid || dialing || Boolean(activeCall)}><Phone size={20} />{dialing ? 'Registrando…' : activeCall ? 'Ligação em curso' : 'Ligar agora'}<ArrowRight size={18} /></button></form><div className="dial-hint"><ShieldCheck size={17} /><span><strong>{externalDialing ? 'Softphone integrado ao protocolo tel:' : 'Modo seguro de interface'}</strong><small>{externalDialing ? 'O navegador abre o aplicativo de chamadas configurado no Windows.' : 'A ativação real acontece após configurar a BR DID.'}</small></span></div><div className="pixel-trail"><i /><i /><i /><i /></div></article>
       <article className="provider-mini-card"><div className="provider-mini-top"><span className="provider-logo">br.did</span><span className={telephony?.provider.status === 'connected' ? 'connection-dot online' : 'connection-dot'}>{telephony?.provider.status === 'connected' ? 'Conectada' : 'Aguardando'}</span></div><div><small>Linha de registro</small><strong>{activeNumbers[0]?.display_number ?? 'Aguardando configuração'}</strong></div><div className="mini-meta-grid"><span><small>Ramal</small><strong>{telephony?.extensions[0]?.external_extension ?? '2001'}</strong></span><span><small>Números</small><strong>{activeNumbers.length}</strong></span></div><button className="secondary-button full" onClick={() => onNavigate('telephony')}>Configurar telefonia <ChevronRight size={16} /></button></article></section>
-    <section className="panel recent-panel"><div className="panel-heading"><div><span className="section-label">Últimas ligações</span><h3>Movimento mais recente.</h3></div><button className="secondary-button" onClick={() => onNavigate('history')}>Ver histórico <ArrowRight size={17} /></button></div><CallsTable rows={calls.slice(0, 5)} onRecording={() => onNavigate('recordings')} /></section>
+    <section className="panel recent-panel"><div className="panel-heading"><div><span className="section-label">Hoje · até 20 ligações</span><h3>Movimento mais recente.</h3></div><button className="secondary-button" onClick={() => onNavigate('history')}>Ver histórico <ArrowRight size={17} /></button></div><CallsTable rows={calls} onRecording={() => onNavigate('recordings')} onRedial={prepareRedial} /></section>
     {activeCall && <aside className="call-tracker" aria-live="polite"><div className="call-tracker-head"><span className="call-live-dot" /><div><small>{activeCall.answeredAt ? 'EM CONVERSA' : 'AGUARDANDO O MICROSIP'}</small><strong>{activeCall.remoteDisplay}</strong></div><b>{formatDuration(activeCall.answeredAt ? talkSeconds : sessionSeconds).replace('—', '00:00')}</b></div><p>{activeCall.answeredAt ? 'O conector finalizará o registro quando a ligação terminar.' : 'O resultado será identificado automaticamente. Use os botões apenas se o conector não responder.'}</p><div className="call-tracker-actions">{activeCall.answeredAt ? <button className="primary-button call-end-button" onClick={() => void finishCall('completed')}><Phone size={16} /> Finalizar manualmente</button> : <><button className="primary-button call-answer-button" onClick={() => void markAnswered()}><PhoneCall size={16} /> Atendeu</button><button className="secondary-button" onClick={() => void finishCall('missed')}>Não atendeu</button><button className="secondary-button" onClick={() => void finishCall('busy')}>Ocupado</button><button className="icon-button danger" aria-label="Marcar ligação como falha" title="Falhou" onClick={() => void finishCall('failed')}><X size={16} /></button></>}</div></aside>}</>
 }
 
-function HistoryPage({ calls, filters, users, telephony, onFilters, onApply, onRecording, onDial }: { calls: CallRecord[]; filters: FilterState; users: UserRecord[]; telephony: TelephonyData | null; onFilters: (filters: FilterState) => void; onApply: () => void; onRecording: (id: string) => void; onDial: () => void }) {
-  return <><PageHeader eyebrow="Histórico detalhado" title="Memória boa ajuda. Histórico completo resolve." description="Filtre por período, tipo, usuário, número utilizado, telefone discado e duração." action={<button className="primary-button" onClick={onDial}><Phone size={18} /> Nova ligação</button>} /><AnalyticsFilters filters={filters} users={users} telephony={telephony} onChange={onFilters} onApply={onApply} /><section className="panel history-panel"><div className="panel-heading"><div><span className="section-label">Resultado da busca</span><h3>{calls.length} ligações encontradas</h3></div><span className="manual-note"><CircleHelp size={15} /> Rolagem horizontal mostra todos os dados</span></div><CallsTable rows={calls} onRecording={onRecording} /></section></>
+function HistoryPage({ calls, total, hasMore, loadingMore, filters, users, telephony, onFilters, onApply, onLoadMore, onRecording, onDial }: { calls: CallRecord[]; total: number; hasMore: boolean; loadingMore: boolean; filters: FilterState; users: UserRecord[]; telephony: TelephonyData | null; onFilters: (filters: FilterState) => void; onApply: () => void; onLoadMore: () => void; onRecording: (id: string) => void; onDial: () => void }) {
+  return <><PageHeader eyebrow="Histórico detalhado" title="Memória boa ajuda. Histórico completo resolve." description="Filtre por período, tipo, usuário, número utilizado, telefone discado e duração." action={<button className="primary-button" onClick={onDial}><Phone size={18} /> Nova ligação</button>} /><AnalyticsFilters filters={filters} users={users} telephony={telephony} onChange={onFilters} onApply={onApply} /><section className="panel history-panel"><div className="panel-heading"><div><span className="section-label">Resultado da busca</span><h3>{total} ligações encontradas</h3></div><span className="manual-note"><CircleHelp size={15} /> Exibindo {calls.length} de {total}</span></div><CallsTable rows={calls} onRecording={onRecording} />{hasMore && <div className="pagination-footer"><button className="secondary-button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? 'Carregando…' : 'Carregar mais 50'}</button></div>}</section></>
 }
 
-function RecordingsPage({ recordings, selectedId, onNotify }: { recordings: RecordingRecord[]; selectedId: string | null; onNotify: (message: string) => void }) {
+function RecordingsPage({ recordings, selectedId, total, hasMore, loadingMore, onSearch, onLoadMore, onNotify }: { recordings: RecordingRecord[]; selectedId: string | null; total: number; hasMore: boolean; loadingMore: boolean; onSearch: (query: string) => Promise<void>; onLoadMore: () => void; onNotify: (message: string) => void }) {
   const [query, setQuery] = useState('')
-  const digits = query.replace(/\D/g, '')
-  const visibleRecordings = recordings.filter((recording) => {
-    if (!query.trim()) return true
-    if (digits) return `${recording.remote_number_e164}${recording.remote_number_display}`.replace(/\D/g, '').includes(digits)
-    return recording.remote_number_display.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR'))
-  })
+  const [player, setPlayer] = useState<{ id: string; url: string } | null>(null)
+  const [loadingPlayer, setLoadingPlayer] = useState<string | null>(null)
+
+  useEffect(() => () => {
+    if (player) URL.revokeObjectURL(player.url)
+  }, [player])
+
   async function recordingBlob(id: string) {
     const session = localStorage.getItem('callangos_session')
     const response = await fetch(`${apiBase}/api/v1/recordings/${id}/audio`, { headers: session ? { Authorization: `Bearer ${session}` } : {} })
@@ -285,12 +296,17 @@ function RecordingsPage({ recordings, selectedId, onNotify }: { recordings: Reco
     return response.blob()
   }
   async function playRecording(recording: RecordingRecord) {
-    try { const url = URL.createObjectURL(await recordingBlob(recording.id)); const audio = new Audio(url); audio.onended = () => URL.revokeObjectURL(url); await audio.play() } catch { onNotify('Não foi possível reproduzir esta gravação.') }
+    if (player?.id === recording.id) { setPlayer(null); return }
+    setLoadingPlayer(recording.id)
+    try { setPlayer({ id: recording.id, url: URL.createObjectURL(await recordingBlob(recording.id)) }) } catch { onNotify('Não foi possível reproduzir esta gravação.') } finally { setLoadingPlayer(null) }
   }
   async function downloadRecording(recording: RecordingRecord) {
     try { const url = URL.createObjectURL(await recordingBlob(recording.id)); const link = document.createElement('a'); link.href = url; link.download = `callangos-${recording.remote_number_e164.replace(/\D/g, '')}.mp3`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) } catch { onNotify('Não foi possível baixar esta gravação.') }
   }
-  return <><PageHeader eyebrow="Gravações disponíveis" title="Disse que ligou? Então dá o play." description="Chamadas atendidas com áudio enviado pelo conector. Pendências continuam visíveis apenas no histórico." /><div className="recordings-toolbar"><label className="recording-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pelo número discado" inputMode="tel" aria-label="Buscar gravação pelo número" />{query && <button type="button" onClick={() => setQuery('')} aria-label="Limpar busca"><X size={15} /></button>}</label><span>{visibleRecordings.length} {visibleRecordings.length === 1 ? 'áudio encontrado' : 'áudios encontrados'}</span></div><section className="recordings-list">{visibleRecordings.map((recording) => <article className={selectedId === recording.id ? 'recording-card selected' : 'recording-card'} key={recording.id}><div className="recording-icon"><Volume2 size={22} /></div><div className="recording-copy"><div><strong>{recording.remote_number_display}</strong><StatusPill status="available" /></div><span>{formatWhen(recording.started_at, true)} · {formatDuration(recording.duration_seconds ?? recording.talk_duration_seconds)}</span><small>{recording.user_name ?? 'Sistema'} · saída por {recording.local_number_display ?? 'número não identificado'}</small></div><div className="waveform" aria-hidden="true">{[7,14,21,11,27,17,9,23,30,13,20,8].map((height, index) => <i style={{ height }} key={`${recording.id}-${index}`} />)}</div><div className="recording-actions"><button className="icon-button" aria-label={`Reproduzir gravação de ${recording.remote_number_display}`} onClick={() => void playRecording(recording)}><Play size={17} /></button><button className="icon-button" aria-label={`Baixar gravação de ${recording.remote_number_display}`} onClick={() => void downloadRecording(recording)}><Download size={17} /></button></div></article>)}{visibleRecordings.length === 0 && <div className="empty-card">Nenhuma gravação conversa com esse número.</div>}</section><aside className="info-strip"><Cloud size={19} /><span><strong>Sem áudio fantasma:</strong> esta tela recebe apenas registros com estado “disponível”.</span></aside></>
+  async function submitSearch(event: FormEvent) { event.preventDefault(); await onSearch(query) }
+  async function clearSearch() { setQuery(''); await onSearch('') }
+
+  return <><PageHeader eyebrow="Gravações disponíveis" title="Disse que ligou? Então dá o play." description="Chamadas atendidas com áudio enviado pelo conector. Pendências continuam visíveis apenas no histórico." /><div className="recordings-toolbar"><form className="recording-search" onSubmit={(event) => void submitSearch(event)}><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pelo número discado" inputMode="tel" aria-label="Buscar gravação pelo número" />{query && <button type="button" onClick={() => void clearSearch()} aria-label="Limpar busca"><X size={15} /></button>}<button type="submit" className="recording-search-submit">Buscar</button></form><span>Exibindo {recordings.length} de {total} {total === 1 ? 'áudio' : 'áudios'}</span></div><section className="recordings-list">{recordings.map((recording) => { const isOpen = player?.id === recording.id; return <article className={selectedId === recording.id || isOpen ? 'recording-card selected' : 'recording-card'} key={recording.id}><div className="recording-main"><div className="recording-icon"><Volume2 size={22} /></div><div className="recording-copy"><div><strong>{recording.remote_number_display}</strong><StatusPill status="available" /></div><span>{formatWhen(recording.started_at, true)} · {formatDuration(recording.duration_seconds ?? recording.talk_duration_seconds)}</span><small>{recording.user_name ?? 'Sistema'} · saída por {recording.local_number_display ?? 'número não identificado'}</small></div><div className="waveform" aria-hidden="true">{[7,14,21,11,27,17,9,23,30,13,20,8].map((height, index) => <i style={{ height }} key={`${recording.id}-${index}`} />)}</div><div className="recording-actions"><button className="icon-button" aria-label={`${isOpen ? 'Fechar player' : 'Reproduzir gravação'} de ${recording.remote_number_display}`} disabled={loadingPlayer === recording.id} onClick={() => void playRecording(recording)}>{isOpen ? <Pause size={17} /> : <Play size={17} />}</button><button className="icon-button" aria-label={`Baixar gravação de ${recording.remote_number_display}`} onClick={() => void downloadRecording(recording)}><Download size={17} /></button></div></div>{isOpen && <div className="recording-player"><div><strong>Gravação da ligação</strong><span>Duração: {formatDuration(recording.duration_seconds ?? recording.talk_duration_seconds)}</span></div><audio src={player.url} controls autoPlay preload="metadata">Seu navegador não conseguiu abrir este áudio.</audio></div>}</article> })}{recordings.length === 0 && <div className="empty-card">Nenhuma gravação conversa com esse número.</div>}{hasMore && <div className="pagination-footer"><button className="secondary-button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? 'Carregando…' : 'Carregar mais 50'}</button></div>}</section><aside className="info-strip"><Cloud size={19} /><span><strong>Sem áudio fantasma:</strong> esta tela recebe apenas registros com estado “disponível”.</span></aside></>
 }
 
 function DashboardPage({ dashboard, filters, users, telephony, onFilters, onApply }: { dashboard: DashboardData; filters: FilterState; users: UserRecord[]; telephony: TelephonyData | null; onFilters: (filters: FilterState) => void; onApply: () => void }) {
@@ -410,8 +426,14 @@ function App() {
   const [page, setPage] = useState<Page>('dialer')
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('callangos_sidebar') === 'collapsed')
   const [apiState, setApiState] = useState<ApiState>('loading')
-  const [calls, setCalls] = useState<CallRecord[]>([])
+  const [historyCalls, setHistoryCalls] = useState<CallRecord[]>([])
+  const [recentCalls, setRecentCalls] = useState<CallRecord[]>([])
   const [recordings, setRecordings] = useState<RecordingRecord[]>([])
+  const [historyPage, setHistoryPage] = useState({ total: 0, hasMore: false, nextOffset: 0 })
+  const [recordingsPage, setRecordingsPage] = useState({ total: 0, hasMore: false, nextOffset: 0 })
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false)
+  const [loadingMoreRecordings, setLoadingMoreRecordings] = useState(false)
+  const [recordingQuery, setRecordingQuery] = useState('')
   const [dashboard, setDashboard] = useState<DashboardData>(emptyDashboard)
   const [telephony, setTelephony] = useState<TelephonyData | null>(null)
   const [settings, setSettings] = useState<SettingsData | null>(null)
@@ -426,18 +448,45 @@ function App() {
 
   async function loadCore(user = authUser) {
     try {
-      const [telephonyResponse, settingsResponse, recordingsResponse] = await Promise.all([apiRequest<{ data: TelephonyData }>('/api/v1/telephony'), apiRequest<{ data: SettingsData }>('/api/v1/settings'), apiRequest<{ data: RecordingRecord[] }>('/api/v1/recordings')])
-      setTelephony(telephonyResponse.data); setSettings(settingsResponse.data); setRecordings(recordingsResponse.data)
+      const [telephonyResponse, settingsResponse] = await Promise.all([apiRequest<{ data: TelephonyData }>('/api/v1/telephony'), apiRequest<{ data: SettingsData }>('/api/v1/settings')])
+      setTelephony(telephonyResponse.data); setSettings(settingsResponse.data)
       if (user?.role === 'admin') { const usersResponse = await apiRequest<{ data: UserRecord[] }>('/api/v1/users'); setUsers(usersResponse.data) } else setUsers([])
       setApiState('online')
     } catch { setApiState('offline') }
   }
-  async function loadCalls(filters = historyFilters) { try { const response = await apiRequest<{ data: CallRecord[] }>(`/api/v1/calls?limit=100&${filterQuery(filters)}`); setCalls(response.data); setApiState('online') } catch { setApiState('offline') } }
+  async function loadHistory(filters = historyFilters, offset = 0, append = false) {
+    if (append) setLoadingMoreHistory(true)
+    try {
+      const response = await apiRequest<PaginatedResponse<CallRecord>>(`/api/v1/calls?limit=50&offset=${offset}&${filterQuery(filters)}`)
+      setHistoryCalls((current) => append ? Array.from(new Map([...current, ...response.data].map((call) => [call.id, call])).values()) : response.data)
+      setHistoryPage({ total: response.meta.total, hasMore: response.meta.hasMore, nextOffset: response.meta.offset + response.data.length })
+      setApiState('online')
+    } catch { setApiState('offline') } finally { setLoadingMoreHistory(false) }
+  }
+  async function loadRecentCalls() {
+    try {
+      const today = { ...initialFilters, period: 'today' as const }
+      const response = await apiRequest<PaginatedResponse<CallRecord>>(`/api/v1/calls?limit=20&offset=0&${filterQuery(today)}`)
+      setRecentCalls(response.data)
+      setApiState('online')
+    } catch { setApiState('offline') }
+  }
+  async function loadRecordings(offset = 0, append = false, phone = recordingQuery) {
+    if (append) setLoadingMoreRecordings(true)
+    try {
+      const query = new URLSearchParams({ limit: '50', offset: String(offset) })
+      if (phone.trim()) query.set('phone', phone.trim())
+      const response = await apiRequest<PaginatedResponse<RecordingRecord>>(`/api/v1/recordings?${query}`)
+      setRecordings((current) => append ? Array.from(new Map([...current, ...response.data].map((recording) => [recording.id, recording])).values()) : response.data)
+      setRecordingsPage({ total: response.meta.total, hasMore: response.meta.hasMore, nextOffset: response.meta.offset + response.data.length })
+      setApiState('online')
+    } catch { setApiState('offline') } finally { setLoadingMoreRecordings(false) }
+  }
   async function loadDashboard(filters = dashboardFilters) { try { const response = await apiRequest<{ data: DashboardData }>(`/api/v1/dashboard?${filterQuery(filters)}`); setDashboard(response.data) } catch { setApiState('offline') } }
-  async function refreshAll(user = authUser) { await Promise.all([loadCore(user), loadCalls(), loadDashboard()]) }
+  async function refreshAll(user = authUser) { await Promise.all([loadCore(user), loadHistory(), loadRecentCalls(), loadRecordings(), loadDashboard()]) }
   // Atualiza a lista quando a aba de gravações é aberta após um envio do conector.
   // oxlint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (authUser && page === 'recordings') void loadCore(authUser) }, [page])
+  useEffect(() => { if (authUser && page === 'recordings') void loadRecordings(0, false, recordingQuery) }, [page])
   async function login(email: string, password: string) { const response = await apiRequest<{ data: { token: string; user: AuthUser } }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); localStorage.setItem('callangos_session', response.data.token); setAuthUser(response.data.user); await refreshAll(response.data.user) }
   async function logout() { try { await apiRequest('/api/v1/auth/logout', { method: 'POST' }) } finally { localStorage.removeItem('callangos_session'); setAuthUser(null); setUserDrawer(false); setPage('dialer') } }
 
@@ -455,9 +504,9 @@ function App() {
   const visibleNavItems = navItems.filter((item) => item.id !== 'api' || authUser.role === 'admin')
   const initials = authUser.name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase()
   const currentPage = {
-    dialer: <DialerPage calls={calls} telephony={telephony} settings={settings} onRefresh={() => loadCalls()} onNavigate={setPage} onNotify={notify} />,
-    history: <HistoryPage calls={calls} filters={historyFilters} users={users} telephony={telephony} onFilters={setHistoryFilters} onApply={() => void loadCalls(historyFilters)} onRecording={openRecording} onDial={() => setPage('dialer')} />,
-    recordings: <RecordingsPage recordings={recordings} selectedId={selectedRecording} onNotify={notify} />,
+    dialer: <DialerPage calls={recentCalls} telephony={telephony} settings={settings} onRefresh={loadRecentCalls} onNavigate={setPage} onNotify={notify} />,
+    history: <HistoryPage calls={historyCalls} total={historyPage.total} hasMore={historyPage.hasMore} loadingMore={loadingMoreHistory} filters={historyFilters} users={users} telephony={telephony} onFilters={setHistoryFilters} onApply={() => void loadHistory(historyFilters)} onLoadMore={() => void loadHistory(historyFilters, historyPage.nextOffset, true)} onRecording={openRecording} onDial={() => setPage('dialer')} />,
+    recordings: <RecordingsPage recordings={recordings} selectedId={selectedRecording} total={recordingsPage.total} hasMore={recordingsPage.hasMore} loadingMore={loadingMoreRecordings} onSearch={async (query) => { setRecordingQuery(query); await loadRecordings(0, false, query) }} onLoadMore={() => void loadRecordings(recordingsPage.nextOffset, true, recordingQuery)} onNotify={notify} />,
     dashboard: <DashboardPage dashboard={dashboard} filters={dashboardFilters} users={users} telephony={telephony} onFilters={setDashboardFilters} onApply={() => void loadDashboard(dashboardFilters)} />,
     telephony: <TelephonyPage telephony={telephony} onRefresh={loadCore} onNotify={notify} />,
     api: <ApiPage onNotify={notify} />,

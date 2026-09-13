@@ -1,6 +1,18 @@
 export type Page = 'dialer' | 'history' | 'recordings' | 'dashboard' | 'telephony' | 'settings' | 'api'
 export type Period = 'today' | 'yesterday' | 'last_7_days' | 'last_30_days' | 'this_week' | 'this_month' | 'custom' | 'all'
 
+export type PaginationMeta = {
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
+export type PaginatedResponse<T> = {
+  data: T[]
+  meta: PaginationMeta
+}
+
 export type FilterState = {
   period: Period
   dateFrom: string

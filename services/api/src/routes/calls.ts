@@ -56,10 +56,18 @@ export async function callsRoutes(app: FastifyInstance) {
     const query = z
       .intersection(callFilterSchema, z.object({
         limit: z.coerce.number().int().min(1).max(100).default(50),
+        offset: z.coerce.number().int().nonnegative().default(0),
       }))
       .parse(request.query)
     const { clause, params } = buildCallWhere(query, 'calls')
+    const totalResult = await db.query<{ total: number }>(
+      `SELECT COUNT(*)::integer AS total FROM calls ${clause}`,
+      params,
+    )
     params.push(query.limit)
+    const limitPosition = params.length
+    params.push(query.offset)
+    const offsetPosition = params.length
 
     const result = await db.query(
       `SELECT
@@ -84,11 +92,21 @@ export async function callsRoutes(app: FastifyInstance) {
        LEFT JOIN extensions ON extensions.id = calls.extension_id
        ${clause}
        ORDER BY calls.started_at DESC
-       LIMIT $${params.length}`,
+       LIMIT $${limitPosition}
+       OFFSET $${offsetPosition}`,
       params,
     )
 
-    return { data: result.rows }
+    const total = totalResult.rows[0]?.total ?? 0
+    return {
+      data: result.rows,
+      meta: {
+        total,
+        limit: query.limit,
+        offset: query.offset,
+        hasMore: query.offset + result.rows.length < total,
+      },
+    }
   })
 
   app.get('/api/v1/calls/:id', { preHandler: requireAuth }, async (request, reply) => {
