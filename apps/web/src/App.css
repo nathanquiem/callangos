@@ -327,6 +327,22 @@ button:disabled {
   line-height: 1.6;
 }
 
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-button {
+  border-color: rgba(190, 63, 47, .25);
+  color: var(--red);
+}
+
+.danger-button:hover {
+  border-color: rgba(190, 63, 47, .42);
+  background: var(--red-soft);
+}
+
 .primary-button,
 .secondary-button,
 .icon-button {
@@ -540,6 +556,88 @@ button:disabled {
   margin-top: 2px;
   color: var(--ash);
   font-size: 8px;
+}
+
+.call-tracker {
+  position: fixed;
+  z-index: 45;
+  right: 24px;
+  bottom: 78px;
+  width: min(520px, calc(100vw - 48px));
+  border: 1px solid rgba(255, 98, 56, .32);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .97);
+  padding: 16px;
+  color: var(--graphite);
+  box-shadow: 0 22px 55px rgba(29, 45, 55, .22);
+  backdrop-filter: blur(16px);
+}
+
+.call-tracker-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.call-tracker-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.call-tracker-head small {
+  color: var(--orange);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.call-tracker-head strong {
+  font-size: 14px;
+}
+
+.call-tracker-head b {
+  font-family: 'Jersey 10', sans-serif;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+
+.call-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(22, 140, 97, .12);
+  animation: call-live 1.4s ease-in-out infinite;
+}
+
+@keyframes call-live {
+  50% { box-shadow: 0 0 0 9px rgba(22, 140, 97, 0); }
+}
+
+.call-tracker p {
+  margin: 11px 0 13px;
+  color: var(--slate);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.call-tracker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.call-answer-button {
+  border-color: #087a54;
+  background: var(--green);
+  box-shadow: none;
+}
+
+.call-end-button {
+  width: 100%;
 }
 
 .pixel-trail {
@@ -2632,6 +2730,16 @@ button:disabled {
   background: rgba(35,40,44,.92);
 }
 
+[data-theme='dark'] .call-tracker {
+  border-color: rgba(255, 98, 56, .35);
+  background: rgba(35, 40, 44, .97);
+}
+
+[data-theme='dark'] .danger-button {
+  border-color: rgba(255, 118, 81, .28);
+  color: #ff9274;
+}
+
 [data-theme='dark'] .stat-card.accent-card {
   border-color: rgba(255,98,56,.34);
   background: linear-gradient(145deg, rgba(255,98,56,.13), rgba(35,40,44,.96));
@@ -2779,6 +2887,9 @@ button:disabled {
   .topbar-motto { display: none; }
   .filter-primary, .filter-secondary { grid-template-columns: 1fr 1fr; }
   .theme-picker { grid-template-columns: 1fr; }
+  .page-actions { width: 100%; }
+  .page-actions > button { flex: 1; }
+  .call-tracker { right: 14px; bottom: 14px; width: calc(100vw - 28px); }
 }
 
 @media (max-width: 560px) {
@@ -2794,6 +2905,7 @@ button:disabled {
   .signal-card { min-height: 470px; padding-right: 15px; padding-left: 15px; }
   .recording-card { grid-template-columns: auto 1fr; }
   .recording-actions { grid-column: 2; }
+  .call-tracker-actions > button:not(.icon-button) { flex: 1 1 auto; }
 }
 
 /* Pequeno ganho de leitura sem perder a densidade do painel. */

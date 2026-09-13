@@ -190,7 +190,7 @@ export async function callsRoutes(app: FastifyInstance) {
            notes = COALESCE($5, notes),
            data_source = $6,
            answered_at = CASE
-             WHEN $2 IN ('answered', 'completed') AND answered_at IS NULL THEN started_at
+             WHEN $2 IN ('answered', 'completed') AND answered_at IS NULL THEN now()
              ELSE answered_at
            END,
            ended_at = CASE WHEN $7 THEN now() ELSE ended_at END,

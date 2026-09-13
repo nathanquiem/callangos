@@ -117,6 +117,42 @@ export async function telephonyRoutes(app: FastifyInstance) {
     return { data: result.rows[0] }
   })
 
+  app.delete('/api/v1/telephony', { preHandler: requireAdmin }, async (_request, reply) => {
+    await db.query('DELETE FROM phone_numbers WHERE provider_id = $1', [demoIds.provider])
+    await db.query(
+      `UPDATE telephony_providers
+       SET status = 'pending',
+           integration_mode = 'external_protocol',
+           public_config = $2::jsonb,
+           last_sync_at = NULL,
+           updated_at = now()
+       WHERE id = $1`,
+      [
+        demoIds.provider,
+        JSON.stringify({
+          portalUrl: 'https://brdid.com.br/',
+          plan: 'PABX Virtual',
+          extension: '2001',
+          dialFormat: 'e164_digits',
+          protocolHandler: 'tel',
+          cdrMode: 'manual',
+          recordingMode: 'provider',
+        }),
+      ],
+    )
+    await db.query(
+      `UPDATE extensions
+       SET external_extension = '2001',
+           label = 'Ramal principal',
+           dialer_mode = 'external_protocol',
+           active = true,
+           updated_at = now()
+       WHERE id = $1`,
+      [demoIds.extension],
+    )
+    return reply.code(204).send()
+  })
+
   app.post('/api/v1/telephony/numbers', { preHandler: requireAdmin }, async (request, reply) => {
     const body = createNumberSchema.parse(request.body)
     const e164 = normalizeBrazilianPhone(body.number)

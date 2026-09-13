@@ -66,6 +66,22 @@ import './App.css'
 
 type ApiState = 'loading' | 'online' | 'offline'
 
+type ActiveManualCall = {
+  id: string
+  remoteDisplay: string
+  startedAt: number
+  answeredAt: number | null
+}
+
+function loadActiveManualCall(): ActiveManualCall | null {
+  try {
+    const saved = window.localStorage.getItem('callangos.active-call')
+    return saved ? JSON.parse(saved) as ActiveManualCall : null
+  } catch {
+    return null
+  }
+}
+
 const emptyDashboard: DashboardData = {
   summary: { total_calls: 0, answered_calls: 0, unanswered_calls: 0, inbound_calls: 0, outbound_calls: 0, recordings_available: 0, talk_seconds: 0, session_seconds: 0, average_talk_seconds: 0, unique_numbers: 0 },
   byStatus: [], byDay: [], byHour: [], byDuration: [], byUser: [],
@@ -168,26 +184,65 @@ function DialerPage({ calls, telephony, settings, onRefresh, onNavigate, onNotif
   const [phone, setPhone] = useState('')
   const [phoneNumberId, setPhoneNumberId] = useState('')
   const [dialing, setDialing] = useState(false)
+  const [activeCall, setActiveCall] = useState<ActiveManualCall | null>(loadActiveManualCall)
+  const [timerNow, setTimerNow] = useState(() => Date.now())
   const valid = phone.replace(/\D/g, '').length >= 10
   const selectedPhoneNumberId = phoneNumberId || activeNumbers[0]?.id || ''
 
+  useEffect(() => {
+    if (activeCall) window.localStorage.setItem('callangos.active-call', JSON.stringify(activeCall))
+    else window.localStorage.removeItem('callangos.active-call')
+  }, [activeCall])
+
+  useEffect(() => {
+    if (!activeCall) return
+    const interval = window.setInterval(() => setTimerNow(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [activeCall])
+
+  const sessionSeconds = activeCall ? Math.max(0, Math.floor((timerNow - activeCall.startedAt) / 1000)) : 0
+  const talkSeconds = activeCall?.answeredAt ? Math.max(0, Math.floor((timerNow - activeCall.answeredAt) / 1000)) : 0
+
+  async function markAnswered() {
+    if (!activeCall) return
+    try {
+      await apiRequest(`/api/v1/calls/${activeCall.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'answered', sessionDurationSeconds: sessionSeconds, dataSource: 'manual' }) })
+      setActiveCall({ ...activeCall, answeredAt: Date.now() })
+      await onRefresh()
+      onNotify('Atendimento marcado. O relógio da conversa está valendo.')
+    } catch { onNotify('Não foi possível atualizar a ligação.') }
+  }
+
+  async function finishCall(status: 'completed' | 'missed' | 'busy' | 'failed') {
+    if (!activeCall) return
+    try {
+      await apiRequest(`/api/v1/calls/${activeCall.id}`, { method: 'PATCH', body: JSON.stringify({ status, sessionDurationSeconds: sessionSeconds, talkDurationSeconds: activeCall.answeredAt ? talkSeconds : 0, dataSource: 'manual' }) })
+      setActiveCall(null)
+      await onRefresh()
+      onNotify(status === 'completed' ? 'Ligação concluída e registrada.' : 'Resultado da tentativa registrado.')
+    } catch { onNotify('Não foi possível finalizar o registro da ligação.') }
+  }
+
   async function handleDial(event: FormEvent) {
     event.preventDefault()
-    if (!valid || dialing) return
+    if (!valid || dialing || activeCall) return
     if (settings?.confirm_before_call && !window.confirm(`Ligar para ${formatPhone(phone)}?`)) return
     setDialing(true)
     try {
       const created = await apiRequest<{ data: { id: string; dialUrl: string; remoteDisplay: string } }>('/api/v1/calls', { method: 'POST', body: JSON.stringify({ phone, phoneNumberId: selectedPhoneNumberId || undefined, source: 'app', direction: 'outbound' }) })
       await apiRequest(`/api/v1/calls/${created.data.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'handed_off', dataSource: 'manual' }) })
+      setTimerNow(Date.now())
+      setActiveCall({ id: created.data.id, remoteDisplay: created.data.remoteDisplay, startedAt: Date.now(), answeredAt: null })
       onNotify(`${created.data.remoteDisplay} registrado e enviado ao softphone.`); setPhone(''); await onRefresh()
       if (externalDialing) window.location.href = created.data.dialUrl
     } catch { onNotify('A API está indisponível. A ligação não foi registrada.') } finally { setDialing(false) }
   }
 
   return <><PageHeader eyebrow="Discador principal" title="Discar era fácil. Agora organizar também é." description="A ligação parte desta tela. A extensão é opcional e só será necessária para discar a partir de outros sistemas." />
-    <section className="dialer-layout"><article className="dial-console"><div className="dial-console-copy"><span className="pixel-kicker">CHAMA AÍ</span><h2>Para quem vamos ligar?</h2><p>Digite ou cole um telefone com DDD.</p></div><form className="dial-form" onSubmit={handleDial}><label className="phone-field"><span>+55</span><input value={formatPhone(phone)} onChange={(event) => setPhone(event.target.value)} placeholder="(15) 99999-9999" inputMode="tel" autoFocus /></label>{activeNumbers.length > 0 && <label className="outgoing-number"><small>Registrar na linha</small><select value={selectedPhoneNumberId} onChange={(event) => setPhoneNumberId(event.target.value)}>{activeNumbers.map((number) => <option value={number.id} key={number.id}>{number.label} · {number.display_number}</option>)}</select></label>}<button className="primary-button dial-button" type="submit" disabled={!valid || dialing}><Phone size={20} />{dialing ? 'Registrando…' : 'Ligar agora'}<ArrowRight size={18} /></button></form><div className="dial-hint"><ShieldCheck size={17} /><span><strong>{externalDialing ? 'Softphone integrado ao protocolo tel:' : 'Modo seguro de interface'}</strong><small>{externalDialing ? 'O navegador abre o aplicativo de chamadas configurado no Windows.' : 'A ativação real acontece após configurar a BR DID.'}</small></span></div><div className="pixel-trail"><i /><i /><i /><i /></div></article>
+    <section className="dialer-layout"><article className="dial-console"><div className="dial-console-copy"><span className="pixel-kicker">CHAMA AÍ</span><h2>Para quem vamos ligar?</h2><p>Digite ou cole um telefone com DDD.</p></div><form className="dial-form" onSubmit={handleDial}><label className="phone-field"><span>+55</span><input value={formatPhone(phone)} onChange={(event) => setPhone(event.target.value)} placeholder="(15) 99999-9999" inputMode="tel" autoFocus /></label>{activeNumbers.length > 0 && <label className="outgoing-number"><small>Registrar na linha</small><select value={selectedPhoneNumberId} onChange={(event) => setPhoneNumberId(event.target.value)}>{activeNumbers.map((number) => <option value={number.id} key={number.id}>{number.label} · {number.display_number}</option>)}</select></label>}<button className="primary-button dial-button" type="submit" disabled={!valid || dialing || Boolean(activeCall)}><Phone size={20} />{dialing ? 'Registrando…' : activeCall ? 'Ligação em curso' : 'Ligar agora'}<ArrowRight size={18} /></button></form><div className="dial-hint"><ShieldCheck size={17} /><span><strong>{externalDialing ? 'Softphone integrado ao protocolo tel:' : 'Modo seguro de interface'}</strong><small>{externalDialing ? 'O navegador abre o aplicativo de chamadas configurado no Windows.' : 'A ativação real acontece após configurar a BR DID.'}</small></span></div><div className="pixel-trail"><i /><i /><i /><i /></div></article>
       <article className="provider-mini-card"><div className="provider-mini-top"><span className="provider-logo">br.did</span><span className={telephony?.provider.status === 'connected' ? 'connection-dot online' : 'connection-dot'}>{telephony?.provider.status === 'connected' ? 'Conectada' : 'Aguardando'}</span></div><div><small>Linha de registro</small><strong>{activeNumbers[0]?.display_number ?? 'Aguardando configuração'}</strong></div><div className="mini-meta-grid"><span><small>Ramal</small><strong>{telephony?.extensions[0]?.external_extension ?? '2001'}</strong></span><span><small>Números</small><strong>{activeNumbers.length}</strong></span></div><button className="secondary-button full" onClick={() => onNavigate('telephony')}>Configurar telefonia <ChevronRight size={16} /></button></article></section>
-    <section className="panel recent-panel"><div className="panel-heading"><div><span className="section-label">Últimas ligações</span><h3>Movimento mais recente.</h3></div><button className="secondary-button" onClick={() => onNavigate('history')}>Ver histórico <ArrowRight size={17} /></button></div><CallsTable rows={calls.slice(0, 5)} onRecording={() => onNavigate('recordings')} /></section></>
+    <section className="panel recent-panel"><div className="panel-heading"><div><span className="section-label">Últimas ligações</span><h3>Movimento mais recente.</h3></div><button className="secondary-button" onClick={() => onNavigate('history')}>Ver histórico <ArrowRight size={17} /></button></div><CallsTable rows={calls.slice(0, 5)} onRecording={() => onNavigate('recordings')} /></section>
+    {activeCall && <aside className="call-tracker" aria-live="polite"><div className="call-tracker-head"><span className="call-live-dot" /><div><small>{activeCall.answeredAt ? 'EM CONVERSA' : 'SOFTPHONE ABERTO'}</small><strong>{activeCall.remoteDisplay}</strong></div><b>{formatDuration(activeCall.answeredAt ? talkSeconds : sessionSeconds).replace('—', '00:00')}</b></div><p>{activeCall.answeredAt ? 'Quando desligar, finalize aqui para salvar a duração.' : 'O MicroSIP não conta o resultado para o navegador. Marque o que aconteceu.'}</p><div className="call-tracker-actions">{activeCall.answeredAt ? <button className="primary-button call-end-button" onClick={() => void finishCall('completed')}><Phone size={16} /> Finalizar ligação</button> : <><button className="primary-button call-answer-button" onClick={() => void markAnswered()}><PhoneCall size={16} /> Atendeu</button><button className="secondary-button" onClick={() => void finishCall('missed')}>Não atendeu</button><button className="secondary-button" onClick={() => void finishCall('busy')}>Ocupado</button><button className="icon-button danger" aria-label="Marcar ligação como falha" title="Falhou" onClick={() => void finishCall('failed')}><X size={16} /></button></>}</div></aside>}</>
 }
 
 function HistoryPage({ calls, filters, users, telephony, onFilters, onApply, onRecording, onDial }: { calls: CallRecord[]; filters: FilterState; users: UserRecord[]; telephony: TelephonyData | null; onFilters: (filters: FilterState) => void; onApply: () => void; onRecording: (id: string) => void; onDial: () => void }) {
@@ -227,13 +282,21 @@ function TelephonyPage({ telephony, onRefresh, onNotify }: { telephony: Telephon
   const [newLabel, setNewLabel] = useState('Principal')
   const set = (key: keyof typeof draft, value: string) => setDraft({ ...draft, [key]: value })
 
+  // Sincroniza o formulário quando os dados chegam da API após o primeiro render.
+  // oxlint-disable-next-line react/set-state-in-effect
+  useEffect(() => setDraft({ status: provider?.status ?? 'pending', registrarServer: provider?.public_config.registrarServer ?? '', sipPort: String(provider?.public_config.sipPort ?? 5060), transport: provider?.public_config.transport ?? 'UDP', externalExtension: extension?.external_extension ?? '2001', outboundPrefix: provider?.public_config.outboundPrefix ?? '', dialFormat: provider?.public_config.dialFormat ?? 'e164_digits', protocolHandler: provider?.public_config.protocolHandler ?? 'tel', cdrMode: provider?.public_config.cdrMode ?? 'manual', cdrEndpoint: provider?.public_config.cdrEndpoint ?? '', recordingMode: provider?.public_config.recordingMode ?? 'provider' }), [provider, extension])
+
   async function save() {
     try { await apiRequest('/api/v1/telephony', { method: 'PATCH', body: JSON.stringify({ status: draft.status, integrationMode: 'external_protocol', publicConfig: { registrarServer: draft.registrarServer, sipPort: Number(draft.sipPort), transport: draft.transport, outboundPrefix: draft.outboundPrefix, dialFormat: draft.dialFormat, protocolHandler: draft.protocolHandler, cdrMode: draft.cdrMode, cdrEndpoint: draft.cdrEndpoint, recordingMode: draft.recordingMode }, extension: { externalExtension: draft.externalExtension, label: 'Ramal principal', dialerMode: 'external_protocol', active: true } }) }); await onRefresh(); onNotify('Configuração da BR DID salva.') } catch { onNotify('Não foi possível salvar a telefonia.') }
   }
   async function addNumber(event: FormEvent) { event.preventDefault(); try { await apiRequest('/api/v1/telephony/numbers', { method: 'POST', body: JSON.stringify({ number: newNumber, label: newLabel }) }); setNewNumber(''); await onRefresh(); onNotify('Número adicionado à telefonia.') } catch { onNotify('Revise o número ou confirme se ele já existe.') } }
   async function toggleNumber(id: string, active: boolean) { await apiRequest(`/api/v1/telephony/numbers/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }); await onRefresh() }
+  async function clearTelephony() {
+    if (!window.confirm('Limpar a configuração da telefonia e remover as linhas? O histórico de ligações será preservado.')) return
+    try { await apiRequest('/api/v1/telephony', { method: 'DELETE' }); await onRefresh(); onNotify('Telefonia limpa. O histórico ficou intacto.') } catch { onNotify('Não foi possível limpar a telefonia.') }
+  }
 
-  return <><PageHeader eyebrow="Telefonia" title="Telefonia configurada. Sem ritual técnico." description="O Callangos controla linhas, ramal e integração; o softphone continua responsável pelo áudio e pela senha SIP." action={<button className="primary-button" onClick={save}><Check size={18} /> Salvar telefonia</button>} />
+  return <><PageHeader eyebrow="Telefonia" title="Telefonia configurada. Sem ritual técnico." description="O Callangos controla linhas, ramal e integração; o softphone continua responsável pelo áudio e pela senha SIP." action={<div className="page-actions"><button className="secondary-button danger-button" onClick={() => void clearTelephony()}><Trash2 size={17} /> Limpar telefonia</button><button className="primary-button" onClick={save}><Check size={18} /> Salvar telefonia</button></div>} />
     <section className="telephony-config-grid"><article className="panel config-panel"><div className="config-title"><span className="provider-logo">br.did</span><StatusPill status={draft.status === 'connected' ? 'completed' : 'pending'} /></div><div className="form-grid"><label><span>Estado da conexão</span><select value={draft.status} onChange={(event) => set('status', event.target.value)}><option value="pending">Aguardando</option><option value="connected">Conectada</option><option value="degraded">Instável</option><option value="offline">Offline</option></select></label><label><span>Servidor SIP / registrar</span><input value={draft.registrarServer} onChange={(event) => set('registrarServer', event.target.value)} placeholder="sip.provedor.com.br" /></label><label><span>Porta SIP</span><input value={draft.sipPort} onChange={(event) => set('sipPort', event.target.value.replace(/\D/g,''))} /></label><label><span>Transporte</span><select value={draft.transport} onChange={(event) => set('transport', event.target.value)}><option>UDP</option><option>TCP</option><option>TLS</option></select></label><label><span>Ramal / usuário SIP</span><input value={draft.externalExtension} onChange={(event) => set('externalExtension', event.target.value)} /></label><label><span>Prefixo de saída</span><input value={draft.outboundPrefix} onChange={(event) => set('outboundPrefix', event.target.value)} placeholder="Opcional" /></label><label><span>Formato enviado ao softphone</span><select value={draft.dialFormat} onChange={(event) => set('dialFormat', event.target.value)}><option value="e164_digits">55 + DDD + número</option><option value="e164_plus">+55 + DDD + número</option><option value="national">DDD + número</option></select></label><label><span>Protocolo do discador</span><select value={draft.protocolHandler} onChange={(event) => set('protocolHandler', event.target.value)}><option value="tel">tel:</option><option value="callto">callto:</option><option value="sip">sip:</option></select></label><label><span>Origem dos CDRs</span><select value={draft.cdrMode} onChange={(event) => set('cdrMode', event.target.value)}><option value="manual">Manual</option><option value="api">API</option><option value="webhook">Webhook</option></select></label><label className="span-two"><span>Endpoint de CDR, se fornecido</span><input value={draft.cdrEndpoint} onChange={(event) => set('cdrEndpoint', event.target.value)} placeholder="https://..." /></label><label><span>Gravações</span><select value={draft.recordingMode} onChange={(event) => set('recordingMode', event.target.value)}><option value="provider">Gerenciadas pela BR DID</option><option value="disabled">Desativadas</option></select></label></div><div className="security-note"><ShieldCheck size={18} /><span><strong>Senha SIP não é armazenada aqui.</strong><small>Ela será usada apenas no softphone instalado no computador.</small></span></div></article>
       <article className="panel numbers-panel"><div className="panel-heading"><div><span className="section-label">Linhas</span><h3>Números disponíveis</h3></div><span className="count-badge">{telephony?.numbers.length ?? 0}</span></div><div className="numbers-list">{telephony?.numbers.map((number) => <div key={number.id}><span><Radio size={16} /></span><div><strong>{number.display_number}</strong><small>{number.label}</small></div><button className={number.active ? 'mini-switch on' : 'mini-switch'} onClick={() => void toggleNumber(number.id, !number.active)}><i /></button></div>)}</div><form className="add-number-form" onSubmit={addNumber}><label><span>Nome da linha</span><input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} /></label><label><span>Número com DDD</span><input value={formatPhone(newNumber)} onChange={(event) => setNewNumber(event.target.value)} placeholder="(11) 3333-4444" /></label><button className="secondary-button full" type="submit" disabled={newNumber.replace(/\D/g,'').length < 10}><Plus size={16} /> Adicionar número</button></form></article></section>
     <aside className="info-strip"><ExternalLink size={19} /><span><strong>Discagem principal pelo app:</strong> depois de configurar o ramal no softphone e associar o protocolo escolhido no Windows, o botão “Ligar agora” fará a ponte.</span></aside></>
