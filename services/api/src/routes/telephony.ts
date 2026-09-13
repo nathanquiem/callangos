@@ -19,6 +19,7 @@ const updateTelephonySchema = z.object({
       sipPort: z.number().int().min(1).max(65535).optional(),
       transport: z.enum(['UDP', 'TCP', 'TLS']).optional(),
       outboundPrefix: z.string().max(12).optional(),
+      dialFormat: z.enum(['e164_digits', 'e164_plus', 'national']).optional(),
       protocolHandler: z.enum(['tel', 'callto', 'sip']).optional(),
       cdrMode: z.enum(['manual', 'api', 'webhook']).optional(),
       cdrEndpoint: z.union([z.literal(''), z.string().url()]).optional(),

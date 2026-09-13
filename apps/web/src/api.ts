@@ -93,6 +93,7 @@ export type TelephonyData = {
       sipPort?: number
       transport?: 'UDP' | 'TCP' | 'TLS'
       outboundPrefix?: string
+      dialFormat?: 'e164_digits' | 'e164_plus' | 'national'
       protocolHandler?: 'tel' | 'callto' | 'sip'
       cdrMode?: 'manual' | 'api' | 'webhook'
       cdrEndpoint?: string

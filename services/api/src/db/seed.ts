@@ -41,6 +41,7 @@ export async function seed() {
         portalUrl: 'https://brdid.com.br/',
         plan: 'PABX Virtual',
         extension: '2001',
+        dialFormat: 'e164_digits',
       }),
     ],
   )

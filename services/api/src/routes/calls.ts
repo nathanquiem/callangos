@@ -37,6 +37,18 @@ const updateCallSchema = z.object({
 type DialerPublicConfig = {
   protocolHandler?: 'tel' | 'callto' | 'sip'
   outboundPrefix?: string
+  dialFormat?: 'e164_digits' | 'e164_plus' | 'national'
+}
+
+function formatDialTarget(remoteNumber: string, config: DialerPublicConfig) {
+  const digits = remoteNumber.replace(/\D/g, '')
+  const base = config.dialFormat === 'e164_plus'
+    ? `+${digits}`
+    : config.dialFormat === 'national'
+      ? digits.replace(/^55/, '')
+      : digits
+
+  return `${config.outboundPrefix?.trim() ?? ''}${base}`
 }
 
 export async function callsRoutes(app: FastifyInstance) {
@@ -150,10 +162,7 @@ export async function callsRoutes(app: FastifyInstance) {
       [demoIds.provider],
     )
     const protocolHandler = provider.rows[0]?.public_config?.protocolHandler ?? 'tel'
-    const outboundPrefix = provider.rows[0]?.public_config?.outboundPrefix?.trim() ?? ''
-    const dialTarget = outboundPrefix
-      ? `${outboundPrefix}${remoteNumber.replace(/^\+/, '')}`
-      : remoteNumber
+    const dialTarget = formatDialTarget(remoteNumber, provider.rows[0]?.public_config ?? {})
 
     return reply.code(201).send({
       data: {
