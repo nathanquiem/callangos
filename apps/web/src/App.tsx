@@ -4,7 +4,6 @@ import {
   Activity,
   ArrowRight,
   BarChart3,
-  Bell,
   CalendarDays,
   Check,
   ChevronRight,
@@ -33,6 +32,7 @@ import {
   Play,
   Plus,
   Radio,
+  RefreshCw,
   RotateCcw,
   Search,
   Settings,
@@ -445,6 +445,7 @@ function App() {
   const [toast, setToast] = useState('')
   const [authReady, setAuthReady] = useState(false)
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   async function loadCore(user = authUser) {
     try {
@@ -484,9 +485,32 @@ function App() {
   }
   async function loadDashboard(filters = dashboardFilters) { try { const response = await apiRequest<{ data: DashboardData }>(`/api/v1/dashboard?${filterQuery(filters)}`); setDashboard(response.data) } catch { setApiState('offline') } }
   async function refreshAll(user = authUser) { await Promise.all([loadCore(user), loadHistory(), loadRecentCalls(), loadRecordings(), loadDashboard()]) }
+  async function refreshManually() {
+    if (refreshing) return
+    setRefreshing(true)
+    try { await refreshAll(authUser); notify('Dados atualizados agora.') } finally { setRefreshing(false) }
+  }
   // Atualiza a lista quando a aba de gravações é aberta após um envio do conector.
   // oxlint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (authUser && page === 'recordings') void loadRecordings(0, false, recordingQuery) }, [page])
+  // Mantém chamadas e gravações pendentes sincronizadas sem recarregar a página inteira.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!authUser) return
+    const syncPendingRecordings = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadRecentCalls()
+      if (page === 'recordings') void loadRecordings(0, false, recordingQuery)
+    }
+    const interval = window.setInterval(syncPendingRecordings, 15000)
+    window.addEventListener('focus', syncPendingRecordings)
+    document.addEventListener('visibilitychange', syncPendingRecordings)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', syncPendingRecordings)
+      document.removeEventListener('visibilitychange', syncPendingRecordings)
+    }
+  }, [authUser, page, recordingQuery])
   async function login(email: string, password: string) { const response = await apiRequest<{ data: { token: string; user: AuthUser } }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); localStorage.setItem('callangos_session', response.data.token); setAuthUser(response.data.user); await refreshAll(response.data.user) }
   async function logout() { try { await apiRequest('/api/v1/auth/logout', { method: 'POST' }) } finally { localStorage.removeItem('callangos_session'); setAuthUser(null); setUserDrawer(false); setPage('dialer') } }
 
@@ -515,7 +539,7 @@ function App() {
 
   return <div className={collapsed ? 'app-shell sidebar-collapsed' : 'app-shell'}>
     <aside className="sidebar"><SidebarBrand /><button className="collapse-button" title={collapsed ? 'Expandir menu' : 'Recolher menu'} onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><nav>{visibleNavItems.map((item) => { const Icon = item.icon; return <button className={page === item.id ? 'nav-item active' : 'nav-item'} title={collapsed ? item.label : undefined} key={item.id} onClick={() => setPage(item.id)}><Icon size={18} /><span>{item.label}</span></button> })}</nav><div className="sidebar-foot"><div className="database-state"><span className={apiState === 'online' ? 'api-dot online' : apiState === 'offline' ? 'api-dot offline' : 'api-dot'} /><span><strong>{apiState === 'online' ? 'Banco conectado' : apiState === 'offline' ? 'API indisponível' : 'Conectando…'}</strong><small>{apiState === 'online' ? 'PostgreSQL local' : 'localhost:3333'}</small></span></div><button className="profile" onClick={() => authUser.role === 'admin' ? setUserDrawer(true) : void logout()}><span>{initials}</span><div><strong>{authUser.name}</strong><small>{authUser.role === 'admin' ? 'Gerenciar usuários' : 'Encerrar sessão'}</small></div>{authUser.role === 'admin' ? <Users size={17} /> : <LogOut size={17} />}</button></div></aside>
-    <div className="workspace"><header className="topbar"><button className="mobile-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button><div className="topbar-motto"><span aria-hidden="true"><i /><i /><i /><i /></span><strong>Vencer na vida não pede sorte. Pede disciplina até nos dias sem vontade.</strong></div><div className="sync-state"><Cloud size={15} />{apiState === 'online' ? 'Tudo sincronizado' : 'Modo sem conexão'}</div><button className="icon-button"><Bell size={18} /></button></header><main className={settings?.compact_tables ? 'content compact-tables' : 'content'}>{currentPage}</main></div>
+    <div className="workspace"><header className="topbar"><button className="mobile-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button><div className="topbar-motto"><span aria-hidden="true"><i /><i /><i /><i /></span><strong>Vencer na vida não pede sorte. Pede disciplina até nos dias sem vontade.</strong></div><div className="sync-state"><Cloud size={15} />{refreshing ? 'Atualizando…' : apiState === 'online' ? 'Tudo sincronizado' : 'Modo sem conexão'}</div><button className={refreshing ? 'icon-button topbar-refresh refreshing' : 'icon-button topbar-refresh'} type="button" disabled={refreshing} title="Atualizar dados agora" aria-label="Atualizar dados agora" onClick={() => void refreshManually()}><RefreshCw size={18} /></button></header><main className={settings?.compact_tables ? 'content compact-tables' : 'content'}>{currentPage}</main></div>
     {userDrawer && authUser.role === 'admin' && <UserDrawer users={users} onClose={() => setUserDrawer(false)} onRefresh={() => loadCore(authUser)} onNotify={notify} onLogout={logout} />}{toast && <div className="toast"><Check size={17} />{toast}</div>}
   </div>
 }

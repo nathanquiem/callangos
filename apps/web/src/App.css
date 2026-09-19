@@ -256,6 +256,14 @@ button:disabled {
   font-weight: 700;
 }
 
+.topbar-refresh {
+  flex: 0 0 auto;
+}
+
+.topbar-refresh.refreshing svg {
+  animation: button-spin .7s linear infinite;
+}
+
 .topbar-motto {
   display: inline-flex;
   align-items: center;
